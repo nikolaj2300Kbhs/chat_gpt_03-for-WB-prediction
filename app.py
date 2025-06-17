@@ -3,9 +3,8 @@ import os
 import re
 import logging
 import time
-import openai
-from langchain.prompts import PromptTemplate
 from openai import OpenAI
+import requests
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -32,125 +31,84 @@ Historical Data (for reference, use only for general trends):
 
 Box Information: {box_info}
 
-You are an expert in evaluating Goodiebox welcome boxes for their ability to attract new members in Denmark. Your task is to predict the daily intake (new members per day) for the box at a Customer Acquisition Cost (CAC) of 17.5 EUR. A regression model has been trained on historical data to predict the daily intake based on the Box Information. The predicted intake from the regression model is {predicted_intake}. Use this predicted intake as the primary basis and apply minimal adjustments based on the Box Information and general trends from historical data, then return the final predicted daily intake as a whole number.
+You are an expert in evaluating Goodiebox welcome boxes for their ability to attract new members in Denmark. Your task is to predict the daily intake (new members per day) for the box at a Customer Acquisition Cost (CAC) of 17.5 EUR. A regression model has predicted a daily intake of {predicted_intake} based on the Box Information. Use this as the primary basis and apply minimal adjustments based on the Box Information and general trends from historical data, then return the final predicted daily intake as a whole number.
 
-**Step 1: Start with the Predicted Intake**
-- The regression model predicts a daily intake of {predicted_intake} based on the Box Information.
+**Step 1: Start with Predicted Intake**
+- Use the regression model's predicted intake: {predicted_intake}.
 
 **Step 2: Apply Minimal Adjustments**
-- Adjust the predicted intake based on the Box Information (e.g., retail value, premium products, ratings, free gift value).
-- Use historical data only to understand general trends (e.g., boxes with high retail value tend to have higher intakes), not to copy specific intakes.
-- Adjustments should be conservative, with a maximum total increase or decrease of 5%:
-  - Increase by 0.5% per 10 EUR of retail value above 100 EUR (max 2%).
-  - Increase by 0.5% per premium product above 3 (max 1.5%).
-  - Increase by 0.25% per 10 EUR of free gift value if rating > 4.0 (max 1.5%).
+- Adjust based on Box Information (e.g., retail value, premium products, ratings, free gift value).
+- Use historical data only for general trends (e.g., high retail value increases intake).
+- Adjustments are conservative, max total change ±5%:
+  - +0.5% per 10 EUR retail value above 100 EUR (max +2%).
+  - +0.5% per premium product above 3 (max +1.5%).
+  - +0.25% per 10 EUR free gift value if rating >4.0 (max +1.5%).
 
 **Step 3: Clamp the Final Value**
-- Ensure the final predicted intake is between 1 and 90 members/day. If below 1, set to 1; if above 90, set to 90.
+- Ensure intake is between 1 and 90 members/day.
 
-**Step 4: Round to Whole Numbers**
+**Step 4: Round to Whole Number**
 - Round the clamped intake to the nearest whole number.
 
-Return only the numerical value of the predicted daily intake as a whole number (e.g., 10). Do not return any other number or text.
+Return only the numerical value of the predicted daily intake (e.g., 10).
 """
-prompt = PromptTemplate(
-    input_variables=["context", "historical_data", "box_info", "predicted_intake"],
-    template=template
-)
 
-def call_openai_api(prompt_text, model_name="o1-preview"):
+def call_openai_api(prompt_text, model_name="o3-preview"):
     try:
-        logger.info(f"Calling OpenAI API with model: {model_name}")
         response = client.chat.completions.create(
             model=model_name,
             messages=[{"role": "user", "content": prompt_text}],
             temperature=0.1,
-            max_tokens=50
+            max_completion_tokens=100
         )
         return response.choices[0].message.content
-    except openai.OpenAIError as e:
-        error_detail = str(e)
-        logger.error(f"OpenAI API error: {error_detail}")
-        raise Exception(error_detail)
+    except Exception as e:
+        logger.error(f"OpenAI API error: {str(e)}")
+        raise
 
 def predict_box_intake(context, box_info, predicted_intake, historical_data):
     try:
-        logger.info(f"Processing prediction request with context: {context[:100]}...")
+        logger.info(f"Processing prediction with context: {context[:100]}...")
         logger.info(f"Box info: {box_info[:100]}...")
-        predictions = []
-        max_retries = 3
-        total_retry_time = 0
-        model_names = ["o1-preview", "o1-mini"]  # Fallback to o1-mini if o1-preview fails
-        for i in range(3):
-            logger.info(f"Sending request to OpenAI API (run {i+1} / 3)")
-            prompt_text = prompt.format(
-                context=context,
-                historical_data=historical_data,
-                box_info=box_info,
-                predicted_intake=predicted_intake
-            )
-            for model_name in model_names:
-                if total_retry_time >= 7:
-                    logger.error("Total retry time would exceed 7 seconds, aborting retries")
-                    raise ValueError("Retry timeout exceeded")
-                for attempt in range(max_retries):
-                    retry_delay = 0.5 * (2 ** attempt)
-                    if total_retry_time + retry_delay > 7:
-                        logger.error("Total retry time would exceed 7 seconds, aborting retries")
-                        raise ValueError("Retry timeout exceeded")
-                    try:
-                        logger.info(f"Attempting OpenAI API with model: {model_name} (attempt {attempt+1} / {max_retries})")
-                        result = call_openai_api(prompt_text, model_name)
-                        logger.info(f"Run {i+1} response: {result}")
-                        match = re.search(r'^\d+$', result.strip())
-                        if match:
-                            intake_float = float(match.group())
-                            if intake_float < 0:
-                                logger.error("Negative intake value received")
-                                raise ValueError("Intake cannot be negative")
-                            intake_float = max(1.0, min(90.0, intake_float))
-                            intake_float = round(intake_float)
-                            predictions.append(intake_float)
-                            break
-                        else:
-                            logger.warning(f"Invalid intake format in run {i+1}: {result}")
-                            raise ValueError("Invalid intake format")
-                    except Exception as e:
-                        logger.warning(f"Attempt failed with model {model_name} (attempt {attempt+1} / {max_retries}): {str(e)}")
-                        if attempt == max_retries - 1 and model_name == model_names[-1]:
-                            logger.error("All attempts and model names failed")
-                            raise
-                        time.sleep(retry_delay)
-                        total_retry_time += retry_delay
-                        continue
-                if predictions:
-                    break
-            if len(predictions) >= 3:
-                break
-        if not predictions:
-            logger.error("No valid intake values collected")
-            raise ValueError("No valid intake values collected")
-        avg_intake = round(sum(predictions) / len(predictions))
-        logger.info(f"Averaged intake from {len(predictions)} runs: {avg_intake}")
-        return avg_intake
+        prompt_text = template.format(
+            context=context,
+            historical_data=historical_data,
+            box_info=box_info,
+            predicted_intake=predicted_intake
+        )
+        for attempt in range(3):
+            try:
+                result = call_openai_api(prompt_text)
+                match = re.search(r'\d+', result)
+                if match:
+                    intake = round(float(match.group()))
+                    intake = max(1, min(90, intake))
+                    logger.info(f"Predicted intake: {intake}")
+                    return intake
+                else:
+                    logger.warning(f"Invalid intake format: {result}")
+            except Exception as e:
+                logger.warning(f"Attempt {attempt+1} failed: {str(e)}")
+                if attempt < 2:
+                    time.sleep(0.5)
+        raise ValueError("No valid intake value collected")
     except Exception as e:
-        logger.error(f"Error in prediction: {str(e)}")
+        logger.error(f"Prediction error: {str(e)}")
         raise
 
 @app.route('/predict_box_score', methods=['POST'])
 def box_score():
     try:
         data = request.get_json()
-        if not data or 'box_info' not in data or 'context' not in data or 'predicted_intake' not in data:
-            logger.error("Missing box_info, context, or predicted_intake in request")
+        if not all(k in data for k in ['box_info', 'context', 'predicted_intake']):
+            logger.error("Missing required fields in request")
             return jsonify({'error': 'Missing box_info, context, or predicted_intake'}), 400
-        box_info = data['box_info']
-        context_text = data['context']
-        predicted_intake = data['predicted_intake']
-        historical_data = data.get('historical_data', '')
-        logger.info("Received request to predict box intake")
-        intake = predict_box_intake(context_text, box_info, predicted_intake, historical_data)
-        logger.info(f"Returning predicted intake: {intake}")
+        intake = predict_box_intake(
+            data['context'],
+            data['box_info'],
+            data['predicted_intake'],
+            data.get('historical_data', '')
+        )
         return jsonify({'predicted_intake': intake})
     except Exception as e:
         logger.error(f"Endpoint error: {str(e)}")
@@ -164,35 +122,12 @@ def health_check():
 @app.route('/test_model', methods=['GET'])
 def test_model():
     try:
-        logger.info("Received request to test OpenAI model")
-        model_names = ["o1-preview", "o1-mini"]
-        max_retries = 3
-        total_retry_time = 0
-        for model_name in model_names:
-            if total_retry_time >= 7:
-                logger.error("Total retry time would exceed 7 seconds, aborting retries")
-                raise ValueError("Retry timeout exceeded")
-            for attempt in range(max_retries):
-                retry_delay = 0.5 * (2 ** attempt)
-                if total_retry_time + retry_delay > 7:
-                    logger.error("Total retry time would exceed 7 seconds, aborting retries")
-                    raise ValueError("Retry timeout exceeded")
-                try:
-                    logger.info(f"Attempting OpenAI API with model: {model_name} (attempt {attempt+1} / {max_retries})")
-                    result = call_openai_api("Test prompt to verify API access", model_name)
-                    logger.info(f"Test prompt successful: {result}")
-                    return jsonify({'status': 'success', 'response': result})
-                except Exception as e:
-                    logger.warning(f"Test prompt failed with model {model_name} (attempt {attempt+1} / {max_retries}): {str(e)}")
-                    if attempt == max_retries - 1 and model_name == model_names[-1]:
-                        logger.error("All attempts and model names failed")
-                        raise
-                    time.sleep(retry_delay)
-                    total_retry_time += retry_delay
-                    continue
-            break
+        logger.info("Testing OpenAI model")
+        result = call_openai_api("Test prompt to verify API access")
+        logger.info(f"Test successful: {result}")
+        return jsonify({'status': 'success', 'response': result})
     except Exception as e:
-        logger.error(f"Test prompt failed: {str(e)}")
+        logger.error(f"Test failed: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 if __name__ == '__main__':
