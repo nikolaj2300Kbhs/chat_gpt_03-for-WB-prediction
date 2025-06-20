@@ -54,7 +54,7 @@ def call_openai_api(prompt_text, model_name="o3"):
             model=model_name,
             messages=[{"role": "user", "content": prompt_text}],
             temperature=0.1,
-            max_tokens=50
+            max_completion_tokens=50
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
