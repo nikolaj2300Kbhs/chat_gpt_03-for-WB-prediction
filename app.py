@@ -81,8 +81,8 @@ def predict_box_intake(context, box_info, predicted_intake, historical_data):
             except Exception as e:
                 logger.warning(f"Attempt {attempt+1} failed: {str(e)}")
                 if attempt < 2:
-                    time.sleep(1)
-        raise ValueError("No valid intake value")
+                    time.sleep(2)  # Increased delay for access propagation
+        raise ValueError("No valid intake value after retries")
     except Exception as e:
         logger.error(f"Prediction error: {str(e)}")
         raise
@@ -96,10 +96,13 @@ def box_score():
         if missing:
             logger.error(f"Missing fields: {missing}")
             return jsonify({'error': f"Missing fields: {missing}"}), 400
+        if not isinstance(data['predicted_intake'], (int, float)):
+            logger.error("Invalid predicted_intake type")
+            return jsonify({'error': "predicted_intake must be a number"}), 400
         intake = predict_box_intake(
             data['context'],
             data['box_info'],
-            data['predicted_intake'],
+            float(data['predicted_intake']),
             data.get('historical_data', '')
         )
         return jsonify({'predicted_intake': intake}), 200
