@@ -47,13 +47,13 @@ You are an expert in evaluating Goodiebox welcome boxes for their ability to att
 Return only the numerical value (e.g., 10).
 """
 
-def call_openai_api(prompt_text, model_name="o3-preview"):
+def call_openai_api(prompt_text, model_name="o3"):
     try:
         response = client.chat.completions.create(
             model=model_name,
             messages=[{"role": "user", "content": prompt_text}],
             temperature=0.1,
-            max_completion_tokens=50
+            max_tokens=50
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
@@ -81,7 +81,7 @@ def predict_box_intake(context, box_info, predicted_intake, historical_data):
             except Exception as e:
                 logger.warning(f"Attempt {attempt+1} failed: {str(e)}")
                 if attempt < 2:
-                    time.sleep(2)  # Increased delay for access propagation
+                    time.sleep(2)
         raise ValueError("No valid intake value after retries")
     except Exception as e:
         logger.error(f"Prediction error: {str(e)}")
