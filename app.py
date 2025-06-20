@@ -50,12 +50,22 @@ Return only the numerical value (e.g., 10).
 def call_openai_api(prompt_text, model_name="o3"):
     try:
         logger.info(f"Calling OpenAI API with prompt: {prompt_text[:50]}...")
-        response = client.chat.completions.create(
-            model=model_name,
-            messages=[{"role": "user", "content": prompt_text}],
-            temperature=0.1,
-            max_completion_tokens=50
-        )
+        # Try max_completion_tokens first, fall back to max_tokens if unsupported
+        try:
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "user", "content": prompt_text}],
+                temperature=0.1,
+                max_completion_tokens=50
+            )
+        except Exception as e:
+            logger.warning(f"max_completion_tokens failed: {str(e)}, trying max_tokens")
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "user", "content": prompt_text}],
+                temperature=0.1,
+                max_tokens=50
+            )
         return response.choices[0].message.content.strip()
     except Exception as e:
         logger.error(f"OpenAI API error: {str(e)}")
