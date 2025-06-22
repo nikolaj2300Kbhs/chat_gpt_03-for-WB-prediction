@@ -52,8 +52,7 @@ def call_openai_api(prompt_text, model_name="o3"):
         logger.info(f"Calling OpenAI API with prompt: {prompt_text[:50]}...")
         response = client.chat.completions.create(
             model=model_name,
-            messages=[{"role": "user", "content": prompt_text}],
-            temperature=0.1
+            messages=[{"role": "user", "content": prompt_text}]
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
