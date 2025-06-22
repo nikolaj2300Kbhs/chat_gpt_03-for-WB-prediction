@@ -25,7 +25,7 @@ Historical Data (for reference, use only for general trends):
 
 Box Information: {box_info}
 
-You are an expert in evaluating Goodiebox welcome boxes for their ability to attract new members in Denmark. Predict the daily intake (new members per day) at a CAC of 17.5 EUR. A regression model predicts {predicted_intake}. Use this as the primary basis, apply minimal adjustments based on Box Information and historical trends, and return the final predicted daily intake as a whole number.
+You are an expert in evaluating Goodiebox welcome boxes for their ability to attract new members in Denmark. Predict the daily intake (new members per day) at a CAC of 17.5 EUR. A regression model predicts {predicted_intake}. Use this as the primary basis, apply minimal adjustments based on Box Information and historical trends, and return the final predicted daily intake as a whole number. Prioritize higher intakes for boxes with premium products and high retail value.
 
 **Step 1: Start with Predicted Intake**
 - Use {predicted_intake}.
@@ -36,7 +36,7 @@ You are an expert in evaluating Goodiebox welcome boxes for their ability to att
 - Max ±5% change:
   - +0.5% per 10 EUR retail value above 100 EUR (max +2%).
   - +0.5% per premium product above 3 (max +1.5%).
-  - +0.25% per 10 EUR free gift value if rating >4.0 (max +1.5).
+  - +0.25% per 10 EUR free gift value if rating >4.0 (max +1.5%).
 
 **Step 3: Clamp**
 - Ensure 1–90 members/day.
