@@ -36,7 +36,7 @@ You are an expert in evaluating Goodiebox welcome boxes for their ability to att
 - Max ±5% change:
   - +0.5% per 10 EUR retail value above 100 EUR (max +2%).
   - +0.5% per premium product above 3 (max +1.5%).
-  - +0.25% per 10 EUR free gift value if rating >4.0 (max +1.5%).
+  - +0.25% per 10 EUR free gift value if rating >4.0 (max +1.5).
 
 **Step 3: Clamp**
 - Ensure 1–90 members/day.
@@ -124,8 +124,9 @@ def health_check():
 def test_model():
     try:
         logger.info("Testing OpenAI model")
-        result = call_openai_api("Test prompt: Return 42")
-        if re.search(r'42', result):
+        result = call_openai_api("Please provide a single number: 42")
+        match = re.search(r'^\d+$', result)
+        if match and int(match.group()) == 42:
             logger.info("Test successful")
             return jsonify({'status': 'success', 'response': result}), 200
         return jsonify({'status': 'error', 'error': 'Invalid test response'}), 400
